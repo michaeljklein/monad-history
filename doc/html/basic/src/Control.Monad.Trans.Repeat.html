@@ -1,0 +1,412 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><link rel="stylesheet" type="text/css" href="style.css" /><script type="text/javascript" src="highlight.js"></script></head><body><pre><span class="hs-pragma">{-# LANGUAGE GADTs #-}</span><span>
+</span><a name="line-2"></a><span class="hs-pragma">{-# LANGUAGE TypeOperators #-}</span><span>
+</span><a name="line-3"></a><span class="hs-pragma">{-# LANGUAGE DeriveFunctor #-}</span><span>
+</span><a name="line-4"></a><span class="hs-pragma">{-# LANGUAGE KindSignatures #-}</span><span>
+</span><a name="line-5"></a><span class="hs-pragma">{-# LANGUAGE FlexibleInstances #-}</span><span>
+</span><a name="line-6"></a><span class="hs-pragma">{-# LANGUAGE MultiParamTypeClasses #-}</span><span>
+</span><a name="line-7"></a><span class="hs-pragma">{-# LANGUAGE DataKinds #-}</span><span>
+</span><a name="line-8"></a><span class="hs-pragma">{-# LANGUAGE FlexibleContexts #-}</span><span>
+</span><a name="line-9"></a><span class="hs-pragma">{-# LANGUAGE UndecidableInstances #-}</span><span>
+</span><a name="line-10"></a><span class="hs-pragma">{-# LANGUAGE RecordWildCards #-}</span><span>
+</span><a name="line-11"></a><span>
+</span><a name="line-12"></a><span class="hs-keyword">module</span><span> </span><span class="hs-identifier">Control.Monad.Trans.Repeat</span><span> </span><span class="hs-keyword">where</span><span>
+</span><a name="line-13"></a><span>
+</span><a name="line-14"></a><span class="hs-keyword">import</span><span> </span><span class="hs-identifier">Data.Bifunctor</span><span>
+</span><a name="line-15"></a><span class="hs-comment">-- import Data.Type.Equality</span><span>
+</span><a name="line-16"></a><span class="hs-keyword">import</span><span> </span><span class="hs-identifier">Control.Monad.Trans.Except</span><span>
+</span><a name="line-17"></a><span class="hs-keyword">import</span><span> </span><span class="hs-identifier">Control.Monad.Trans.Class</span><span>
+</span><a name="line-18"></a><span class="hs-keyword">import</span><span> </span><span class="hs-identifier">Control.Monad.Trans.Maybe</span><span>
+</span><a name="line-19"></a><span class="hs-comment">-- import Data.Functor.Classes</span><span>
+</span><a name="line-20"></a><span class="hs-comment">-- import qualified Text.ParserCombinators.ReadP as RP</span><span>
+</span><a name="line-21"></a><span class="hs-keyword">import</span><span> </span><span class="hs-identifier">Control.Applicative</span><span>
+</span><a name="line-22"></a><span class="hs-keyword">import</span><span> </span><span class="hs-identifier">Text.ParserCombinators.ReadPrec</span><span> </span><span class="hs-special">(</span><span class="hs-special">)</span><span>
+</span><a name="line-23"></a><span class="hs-keyword">import</span><span> </span><span class="hs-identifier">Text.Read</span><span> </span><span class="hs-special">(</span><span class="hs-special">)</span><span>
+</span><a name="line-24"></a><span class="hs-keyword">import</span><span> </span><span class="hs-identifier">Prelude</span><span> </span><span class="hs-keyword">hiding</span><span> </span><span class="hs-special">(</span><span class="hs-identifier hs-var">fail</span><span class="hs-special">)</span><span>
+</span><a name="line-25"></a><span class="hs-comment">-- import Control.Monad.Fail</span><span>
+</span><a name="line-26"></a><span class="hs-keyword">import</span><span> </span><span class="hs-identifier">Control.Monad.Trans.Free</span><span>
+</span><a name="line-27"></a><span class="hs-keyword">import</span><span> </span><span class="hs-identifier">Control.Monad</span><span>
+</span><a name="line-28"></a><span class="hs-keyword">import</span><span> </span><span class="hs-identifier">Control.Monad.State</span><span>
+</span><a name="line-29"></a><span class="hs-comment">-- import Control.Monad.IO.Class</span><span>
+</span><a name="line-30"></a><span>
+</span><a name="line-31"></a><span class="hs-keyword">import</span><span> </span><span class="hs-identifier">Control.Monad.Indexed</span><span>
+</span><a name="line-32"></a><span class="hs-keyword">import</span><span> </span><a href="Control.Monad.Trans.HisT.html"><span class="hs-identifier">Control.Monad.Trans.HisT</span></a><span>
+</span><a name="line-33"></a><span>
+</span><a name="line-34"></a><span>
+</span><a name="line-35"></a><span class="hs-comment">-- data RepeatT r m a where</span><span>
+</span><a name="line-36"></a><span class="hs-comment">--   Repeat :: (r -&gt; a) -&gt; RepeatT r m a</span><span>
+</span><a name="line-37"></a><span class="hs-comment">--   ToRepeat :: ExceptT r m a -&gt; RepeatT r m a</span><span>
+</span><a name="line-38"></a><span>
+</span><a name="line-39"></a><span class="hs-comment">-- repeat :: RepeatT r m r</span><span>
+</span><a name="line-40"></a><span class="hs-comment">-- repeat = Repeat id</span><span>
+</span><a name="line-41"></a><span>
+</span><a name="line-42"></a><span class="hs-comment">-- instance Functor m =&gt; Functor (RepeatT r m) where</span><span>
+</span><a name="line-43"></a><span class="hs-comment">--   fmap f (Repeat g) = Repeat (f . g)</span><span>
+</span><a name="line-44"></a><span class="hs-comment">--   fmap f (ToRepeat xs) = ToRepeat $ f &lt;$&gt; xs</span><span>
+</span><a name="line-45"></a><span>
+</span><a name="line-46"></a><span class="hs-comment">-- instance Monad m =&gt; Applicative (RepeatT r m) where</span><span>
+</span><a name="line-47"></a><span class="hs-comment">--   pure = ToRepeat . pure</span><span>
+</span><a name="line-48"></a><span>
+</span><a name="line-49"></a><span class="hs-comment">--   Repeat f &lt;*&gt; Repeat x = Repeat $ f &lt;*&gt; x</span><span>
+</span><a name="line-50"></a><span class="hs-comment">--   Repeat f &lt;*&gt; ToRepeat (ExceptT xs) = _ f xs</span><span>
+</span><a name="line-51"></a><span class="hs-comment">--   ToRepeat (ExceptT fs) &lt;*&gt; Repeat x = ToRepeat . ExceptT $ fs &gt;&gt;= either (_ x) (_ . (. x))</span><span>
+</span><a name="line-52"></a><span class="hs-comment">--   ToRepeat fs &lt;*&gt; ToRepeat xs = ToRepeat $ fs &lt;*&gt; xs</span><span>
+</span><a name="line-53"></a><span>
+</span><a name="line-54"></a><span>
+</span><a name="line-55"></a><span>
+</span><a name="line-56"></a><span class="hs-comment">-- Ok, so it looks like the case on line 40 should return (Repeat) if `Right` and (ToRepeat (ExceptT (Left l))) if `Left`</span><span>
+</span><a name="line-57"></a><span>
+</span><a name="line-58"></a><span class="hs-comment">-- To make that work, `RepeatT` will need:</span><span>
+</span><a name="line-59"></a><span class="hs-comment">--   wrap :: Monad m =&gt; m (RepeatT r m a) -&gt; RepeatT r m a</span><span>
+</span><a name="line-60"></a><span>
+</span><a name="line-61"></a><span>
+</span><a name="line-62"></a><span class="hs-keyword">data</span><span> </span><a name="RepeatF"><a href="Control.Monad.Trans.Repeat.html#RepeatF"><span class="hs-identifier">RepeatF</span></a></a><span> </span><a name="local-6989586621679047397"><a href="#local-6989586621679047397"><span class="hs-identifier">r</span></a></a><span> </span><a name="local-6989586621679047398"><a href="#local-6989586621679047398"><span class="hs-identifier">a</span></a></a><span> </span><span class="hs-keyword">where</span><span>
+</span><a name="line-63"></a><span>  </span><a name="Repeat"><a href="Control.Monad.Trans.Repeat.html#Repeat"><span class="hs-identifier">Repeat</span></a></a><span> </span><span class="hs-glyph">::</span><span> </span><span class="hs-special">(</span><a href="#local-6989586621679047399"><span class="hs-identifier hs-type">r</span></a><span> </span><span class="hs-glyph">-&gt;</span><span> </span><a href="#local-6989586621679047400"><span class="hs-identifier hs-type">a</span></a><span class="hs-special">)</span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><a href="Control.Monad.Trans.Repeat.html#RepeatF"><span class="hs-identifier hs-type">RepeatF</span></a><span> </span><a href="#local-6989586621679047399"><span class="hs-identifier hs-type">r</span></a><span> </span><a href="#local-6989586621679047400"><span class="hs-identifier hs-type">a</span></a><span>
+</span><a name="line-64"></a><span>  </span><a name="Break"><a href="Control.Monad.Trans.Repeat.html#Break"><span class="hs-identifier">Break</span></a></a><span> </span><span class="hs-glyph">::</span><span> </span><a href="#local-6989586621679047401"><span class="hs-identifier hs-type">r</span></a><span> </span><span class="hs-glyph">-&gt;</span><span> </span><a href="Control.Monad.Trans.Repeat.html#RepeatF"><span class="hs-identifier hs-type">RepeatF</span></a><span> </span><a href="#local-6989586621679047401"><span class="hs-identifier hs-type">r</span></a><span> </span><a href="#local-6989586621679047402"><span class="hs-identifier hs-type">a</span></a><span>
+</span><a name="line-65"></a><span>  </span><a name="Return"><a href="Control.Monad.Trans.Repeat.html#Return"><span class="hs-identifier">Return</span></a></a><span> </span><span class="hs-glyph">::</span><span> </span><a href="#local-6989586621679047403"><span class="hs-identifier hs-type">a</span></a><span> </span><span class="hs-glyph">-&gt;</span><span> </span><a href="Control.Monad.Trans.Repeat.html#RepeatF"><span class="hs-identifier hs-type">RepeatF</span></a><span> </span><a href="#local-6989586621679047404"><span class="hs-identifier hs-type">r</span></a><span> </span><a href="#local-6989586621679047403"><span class="hs-identifier hs-type">a</span></a><span>
+</span><a name="line-66"></a><span>  </span><span class="hs-keyword">deriving</span><span> </span><span class="hs-special">(</span><span class="hs-identifier hs-type">Functor</span><span class="hs-special">)</span><span>
+</span><a name="line-67"></a><span>
+</span><a name="line-68"></a><span class="hs-keyword">newtype</span><span> </span><a name="RepeatT"><a href="Control.Monad.Trans.Repeat.html#RepeatT"><span class="hs-identifier">RepeatT</span></a></a><span> </span><a name="local-6989586621679047394"><a href="#local-6989586621679047394"><span class="hs-identifier">r</span></a></a><span> </span><a name="local-6989586621679047395"><a href="#local-6989586621679047395"><span class="hs-identifier">m</span></a></a><span> </span><a name="local-6989586621679047396"><a href="#local-6989586621679047396"><span class="hs-identifier">a</span></a></a><span> </span><span class="hs-glyph">=</span><span> </span><a name="RepeatT"><a href="Control.Monad.Trans.Repeat.html#RepeatT"><span class="hs-identifier">RepeatT</span></a></a><span> </span><span class="hs-special">{</span><span> </span><a name="runRepeatT"><a href="Control.Monad.Trans.Repeat.html#runRepeatT"><span class="hs-identifier">runRepeatT</span></a></a><span> </span><span class="hs-glyph">::</span><span> </span><span class="hs-identifier hs-type">FreeT</span><span> </span><span class="hs-special">(</span><a href="Control.Monad.Trans.Repeat.html#RepeatF"><span class="hs-identifier hs-type">RepeatF</span></a><span> </span><a href="#local-6989586621679047394"><span class="hs-identifier hs-type">r</span></a><span class="hs-special">)</span><span> </span><a href="#local-6989586621679047395"><span class="hs-identifier hs-type">m</span></a><span> </span><a href="#local-6989586621679047396"><span class="hs-identifier hs-type">a</span></a><span> </span><span class="hs-special">}</span><span> </span><span class="hs-keyword">deriving</span><span> </span><span class="hs-special">(</span><span class="hs-identifier hs-type">Functor</span><span class="hs-special">)</span><span>
+</span><a name="line-69"></a><span>
+</span><a name="line-70"></a><span class="hs-comment">-- | `Nothing` iff it's `Repeat`, `Left` iff it's `Break`</span><span>
+</span><a name="line-71"></a><span class="hs-identifier">execRepeatT</span><span> </span><span class="hs-glyph">::</span><span> </span><span class="hs-identifier hs-type">Monad</span><span> </span><a href="#local-6989586621679047446"><span class="hs-identifier hs-type">m</span></a><span> </span><span class="hs-glyph">=&gt;</span><span> </span><a href="Control.Monad.Trans.Repeat.html#RepeatT"><span class="hs-identifier hs-type">RepeatT</span></a><span> </span><a href="#local-6989586621679047447"><span class="hs-identifier hs-type">r</span></a><span> </span><a href="#local-6989586621679047446"><span class="hs-identifier hs-type">m</span></a><span> </span><a href="#local-6989586621679047448"><span class="hs-identifier hs-type">a</span></a><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="hs-identifier hs-type">ExceptT</span><span> </span><a href="#local-6989586621679047447"><span class="hs-identifier hs-type">r</span></a><span> </span><span class="hs-special">(</span><span class="hs-identifier hs-type">MaybeT</span><span> </span><a href="#local-6989586621679047446"><span class="hs-identifier hs-type">m</span></a><span class="hs-special">)</span><span> </span><a href="#local-6989586621679047448"><span class="hs-identifier hs-type">a</span></a><span>
+</span><a name="line-72"></a><a name="execRepeatT"><a href="Control.Monad.Trans.Repeat.html#execRepeatT"><span class="hs-identifier">execRepeatT</span></a></a><span> </span><span class="hs-special">(</span><a href="Control.Monad.Trans.Repeat.html#RepeatT"><span class="hs-identifier hs-var">RepeatT</span></a><span> </span><span class="hs-special">(</span><span class="hs-identifier hs-var">FreeT</span><span> </span><a name="local-6989586621679047449"><a href="#local-6989586621679047449"><span class="hs-identifier">x</span></a></a><span class="hs-special">)</span><span class="hs-special">)</span><span> </span><span class="hs-glyph">=</span><span> </span><span class="hs-keyword">do</span><span>
+</span><a name="line-73"></a><span>  </span><a name="local-6989586621679047450"><a href="#local-6989586621679047450"><span class="hs-identifier">x'</span></a></a><span> </span><span class="hs-glyph">&lt;-</span><span> </span><span class="hs-special">(</span><span class="hs-identifier hs-var">lift</span><span> </span><span class="hs-operator hs-var">.</span><span> </span><span class="hs-identifier hs-var">lift</span><span class="hs-special">)</span><span> </span><a href="#local-6989586621679047449"><span class="hs-identifier hs-var">x</span></a><span>
+</span><a name="line-74"></a><span>  </span><span class="hs-keyword">case</span><span> </span><a href="#local-6989586621679047450"><span class="hs-identifier hs-var">x'</span></a><span> </span><span class="hs-keyword">of</span><span>
+</span><a name="line-75"></a><span>    </span><span class="hs-identifier hs-var">Pure</span><span> </span><a name="local-6989586621679047451"><a href="#local-6989586621679047451"><span class="hs-identifier">y</span></a></a><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="hs-identifier hs-var">return</span><span> </span><a href="#local-6989586621679047451"><span class="hs-identifier hs-var">y</span></a><span>
+</span><a name="line-76"></a><span>    </span><span class="hs-identifier hs-var">Free</span><span> </span><a name="local-6989586621679047452"><a href="#local-6989586621679047452"><span class="hs-identifier">y</span></a></a><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="hs-keyword">case</span><span> </span><a href="#local-6989586621679047452"><span class="hs-identifier hs-var">y</span></a><span> </span><span class="hs-keyword">of</span><span>
+</span><a name="line-77"></a><span>                </span><a href="Control.Monad.Trans.Repeat.html#Repeat"><span class="hs-identifier hs-var">Repeat</span></a><span> </span><span class="hs-identifier">_</span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="hs-identifier hs-var">lift</span><span> </span><span class="hs-identifier hs-var">empty</span><span>
+</span><a name="line-78"></a><span>                </span><a href="Control.Monad.Trans.Repeat.html#Break"><span class="hs-identifier hs-var">Break</span></a><span> </span><a name="local-6989586621679047453"><a href="#local-6989586621679047453"><span class="hs-identifier">b</span></a></a><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="hs-identifier hs-var">throwE</span><span> </span><a href="#local-6989586621679047453"><span class="hs-identifier hs-var">b</span></a><span>
+</span><a name="line-79"></a><span>                </span><a href="Control.Monad.Trans.Repeat.html#Return"><span class="hs-identifier hs-var">Return</span></a><span> </span><a name="local-6989586621679047454"><a href="#local-6989586621679047454"><span class="hs-identifier">z</span></a></a><span> </span><span class="hs-glyph">-&gt;</span><span> </span><a href="Control.Monad.Trans.Repeat.html#execRepeatT"><span class="hs-identifier hs-var">execRepeatT</span></a><span> </span><span class="hs-operator hs-var">$</span><span> </span><a href="Control.Monad.Trans.Repeat.html#RepeatT"><span class="hs-identifier hs-var">RepeatT</span></a><span> </span><a href="#local-6989586621679047454"><span class="hs-identifier hs-var">z</span></a><span>
+</span><a name="line-80"></a><span>
+</span><a name="line-81"></a><span class="hs-keyword">instance</span><span> </span><span class="hs-identifier hs-type">Monad</span><span> </span><a href="#local-6989586621679047425"><span class="hs-identifier hs-type">m</span></a><span> </span><span class="hs-glyph">=&gt;</span><span> </span><span class="hs-identifier hs-type">Applicative</span><span> </span><span class="hs-special">(</span><a href="Control.Monad.Trans.Repeat.html#RepeatT"><span class="hs-identifier hs-type">RepeatT</span></a><span> </span><a href="#local-6989586621679047426"><span class="hs-identifier hs-type">r</span></a><span> </span><a href="#local-6989586621679047425"><span class="hs-identifier hs-type">m</span></a><span class="hs-special">)</span><span> </span><span class="hs-keyword">where</span><span>
+</span><a name="line-82"></a><span>  </span><a name="local-3458764513820541680"><span class="hs-identifier">pure</span></a><span> </span><span class="hs-glyph">=</span><span> </span><a href="Control.Monad.Trans.Repeat.html#RepeatT"><span class="hs-identifier hs-var">RepeatT</span></a><span> </span><span class="hs-operator hs-var">.</span><span> </span><span class="hs-identifier hs-var">FreeT</span><span> </span><span class="hs-operator hs-var">.</span><span> </span><span class="hs-identifier hs-var">return</span><span> </span><span class="hs-operator hs-var">.</span><span> </span><span class="hs-identifier hs-var">Pure</span><span>
+</span><a name="line-83"></a><span>
+</span><a name="line-84"></a><span>  </span><span class="hs-special">(</span><a name="local-3458764513820541679"><span class="hs-operator">&lt;*&gt;</span></a><span class="hs-special">)</span><span> </span><span class="hs-glyph">=</span><span> </span><span class="hs-identifier hs-var">ap</span><span>
+</span><a name="line-85"></a><span>
+</span><a name="line-86"></a><span class="hs-keyword">instance</span><span> </span><span class="hs-identifier hs-type">Monad</span><span> </span><a href="#local-6989586621679047415"><span class="hs-identifier hs-type">m</span></a><span> </span><span class="hs-glyph">=&gt;</span><span> </span><span class="hs-identifier hs-type">Monad</span><span> </span><span class="hs-special">(</span><a href="Control.Monad.Trans.Repeat.html#RepeatT"><span class="hs-identifier hs-type">RepeatT</span></a><span> </span><a href="#local-6989586621679047416"><span class="hs-identifier hs-type">r</span></a><span> </span><a href="#local-6989586621679047415"><span class="hs-identifier hs-type">m</span></a><span class="hs-special">)</span><span> </span><span class="hs-keyword">where</span><span>
+</span><a name="line-87"></a><span>  </span><a name="local-3458764513820541102"><span class="hs-identifier">return</span></a><span> </span><span class="hs-glyph">=</span><span> </span><a href="Control.Monad.Trans.Repeat.html#RepeatT"><span class="hs-identifier hs-var">RepeatT</span></a><span> </span><span class="hs-operator hs-var">.</span><span> </span><span class="hs-identifier hs-var">FreeT</span><span> </span><span class="hs-operator hs-var">.</span><span> </span><span class="hs-identifier hs-var">return</span><span> </span><span class="hs-operator hs-var">.</span><span> </span><span class="hs-identifier hs-var">Pure</span><span>
+</span><a name="line-88"></a><span>
+</span><a name="line-89"></a><span>  </span><a href="Control.Monad.Trans.Repeat.html#RepeatT"><span class="hs-identifier hs-var">RepeatT</span></a><span> </span><span class="hs-special">(</span><span class="hs-identifier hs-var">FreeT</span><span> </span><a name="local-6989586621679047417"><a href="#local-6989586621679047417"><span class="hs-identifier">x</span></a></a><span class="hs-special">)</span><span> </span><a name="local-3458764513820541099"><span class="hs-operator">&gt;&gt;=</span></a><span> </span><a name="local-6989586621679047418"><a href="#local-6989586621679047418"><span class="hs-identifier">f</span></a></a><span> </span><span class="hs-glyph">=</span><span> </span><a href="Control.Monad.Trans.Repeat.html#RepeatT"><span class="hs-identifier hs-var">RepeatT</span></a><span> </span><span class="hs-operator hs-var">.</span><span> </span><span class="hs-identifier hs-var">FreeT</span><span> </span><span class="hs-operator hs-var">$</span><span> </span><span class="hs-keyword">do</span><span>
+</span><a name="line-90"></a><span>    </span><a name="local-6989586621679047419"><a href="#local-6989586621679047419"><span class="hs-identifier">x'</span></a></a><span> </span><span class="hs-glyph">&lt;-</span><span> </span><a href="#local-6989586621679047417"><span class="hs-identifier hs-var">x</span></a><span>
+</span><a name="line-91"></a><span>    </span><span class="hs-keyword">case</span><span> </span><a href="#local-6989586621679047419"><span class="hs-identifier hs-var">x'</span></a><span> </span><span class="hs-keyword">of</span><span>
+</span><a name="line-92"></a><span>      </span><span class="hs-identifier hs-var">Pure</span><span> </span><a name="local-6989586621679047420"><a href="#local-6989586621679047420"><span class="hs-identifier">y</span></a></a><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="hs-special">(</span><span class="hs-identifier">runFreeT</span><span> </span><span class="hs-operator hs-var">.</span><span> </span><span class="hs-identifier">runRepeatT</span><span> </span><span class="hs-operator hs-var">.</span><span> </span><a href="#local-6989586621679047418"><span class="hs-identifier hs-var">f</span></a><span class="hs-special">)</span><span> </span><a href="#local-6989586621679047420"><span class="hs-identifier hs-var">y</span></a><span>
+</span><a name="line-93"></a><span>      </span><span class="hs-identifier hs-var">Free</span><span> </span><a name="local-6989586621679047421"><a href="#local-6989586621679047421"><span class="hs-identifier">y</span></a></a><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="hs-keyword">case</span><span> </span><a href="#local-6989586621679047421"><span class="hs-identifier hs-var">y</span></a><span> </span><span class="hs-keyword">of</span><span>
+</span><a name="line-94"></a><span>                  </span><a href="Control.Monad.Trans.Repeat.html#Repeat"><span class="hs-identifier hs-var">Repeat</span></a><span> </span><a name="local-6989586621679047422"><a href="#local-6989586621679047422"><span class="hs-identifier">r</span></a></a><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="hs-identifier hs-var">return</span><span> </span><span class="hs-operator hs-var">.</span><span> </span><span class="hs-identifier hs-var">Free</span><span> </span><span class="hs-operator hs-var">.</span><span> </span><a href="Control.Monad.Trans.Repeat.html#Repeat"><span class="hs-identifier hs-var">Repeat</span></a><span> </span><span class="hs-operator hs-var">.</span><span> </span><span class="hs-identifier hs-var">fmap</span><span> </span><span class="hs-identifier">runRepeatT</span><span> </span><span class="hs-operator hs-var">$</span><span> </span><span class="hs-special">(</span><span class="hs-operator hs-var">&gt;&gt;=</span><span> </span><a href="#local-6989586621679047418"><span class="hs-identifier hs-var">f</span></a><span class="hs-special">)</span><span> </span><span class="hs-operator hs-var">.</span><span> </span><a href="Control.Monad.Trans.Repeat.html#RepeatT"><span class="hs-identifier hs-var">RepeatT</span></a><span> </span><span class="hs-operator hs-var">.</span><span> </span><a href="#local-6989586621679047422"><span class="hs-identifier hs-var">r</span></a><span>
+</span><a name="line-95"></a><span>                  </span><a href="Control.Monad.Trans.Repeat.html#Break"><span class="hs-identifier hs-var">Break</span></a><span> </span><a name="local-6989586621679047423"><a href="#local-6989586621679047423"><span class="hs-identifier">b</span></a></a><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="hs-identifier hs-var">return</span><span> </span><span class="hs-operator hs-var">.</span><span> </span><span class="hs-identifier hs-var">Free</span><span> </span><span class="hs-operator hs-var">.</span><span> </span><a href="Control.Monad.Trans.Repeat.html#Break"><span class="hs-identifier hs-var">Break</span></a><span> </span><span class="hs-operator hs-var">$</span><span> </span><a href="#local-6989586621679047423"><span class="hs-identifier hs-var">b</span></a><span>
+</span><a name="line-96"></a><span>                  </span><a href="Control.Monad.Trans.Repeat.html#Return"><span class="hs-identifier hs-var">Return</span></a><span> </span><a name="local-6989586621679047424"><a href="#local-6989586621679047424"><span class="hs-identifier">z</span></a></a><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="hs-identifier">runFreeT</span><span> </span><span class="hs-operator hs-var">.</span><span> </span><span class="hs-identifier">runRepeatT</span><span> </span><span class="hs-operator hs-var">$</span><span> </span><a href="Control.Monad.Trans.Repeat.html#RepeatT"><span class="hs-identifier hs-var">RepeatT</span></a><span> </span><a href="#local-6989586621679047424"><span class="hs-identifier hs-var">z</span></a><span> </span><span class="hs-operator hs-var">&gt;&gt;=</span><span> </span><a href="#local-6989586621679047418"><span class="hs-identifier hs-var">f</span></a><span>
+</span><a name="line-97"></a><span>
+</span><a name="line-98"></a><span>
+</span><a name="line-99"></a><span class="hs-keyword">instance</span><span> </span><span class="hs-identifier hs-type">MonadTrans</span><span> </span><span class="hs-special">(</span><a href="Control.Monad.Trans.Repeat.html#RepeatT"><span class="hs-identifier hs-type">RepeatT</span></a><span> </span><a href="#local-6989586621679047414"><span class="hs-identifier hs-type">r</span></a><span class="hs-special">)</span><span> </span><span class="hs-keyword">where</span><span>
+</span><a name="line-100"></a><span>  </span><a name="local-8214565720323793060"><span class="hs-identifier">lift</span></a><span> </span><span class="hs-glyph">=</span><span> </span><a href="Control.Monad.Trans.Repeat.html#RepeatT"><span class="hs-identifier hs-var">RepeatT</span></a><span> </span><span class="hs-operator hs-var">.</span><span> </span><span class="hs-identifier hs-var">lift</span><span>
+</span><a name="line-101"></a><span>
+</span><a name="line-102"></a><span class="hs-keyword">instance</span><span> </span><span class="hs-identifier hs-type">MonadIO</span><span> </span><a href="#local-6989586621679047412"><span class="hs-identifier hs-type">m</span></a><span> </span><span class="hs-glyph">=&gt;</span><span> </span><span class="hs-identifier hs-type">MonadIO</span><span> </span><span class="hs-special">(</span><a href="Control.Monad.Trans.Repeat.html#RepeatT"><span class="hs-identifier hs-type">RepeatT</span></a><span> </span><a href="#local-6989586621679047413"><span class="hs-identifier hs-type">r</span></a><span> </span><a href="#local-6989586621679047412"><span class="hs-identifier hs-type">m</span></a><span class="hs-special">)</span><span> </span><span class="hs-keyword">where</span><span>
+</span><a name="line-103"></a><span>  </span><a name="local-8214565720323787068"><span class="hs-identifier">liftIO</span></a><span> </span><span class="hs-glyph">=</span><span> </span><span class="hs-identifier hs-var">lift</span><span> </span><span class="hs-operator hs-var">.</span><span> </span><span class="hs-identifier hs-var">liftIO</span><span>
+</span><a name="line-104"></a><span>
+</span><a name="line-105"></a><span class="hs-keyword">instance</span><span> </span><span class="hs-identifier hs-type">MonadState</span><span> </span><a href="#local-6989586621679047409"><span class="hs-identifier hs-type">s</span></a><span> </span><a href="#local-6989586621679047410"><span class="hs-identifier hs-type">m</span></a><span> </span><span class="hs-glyph">=&gt;</span><span> </span><span class="hs-identifier hs-type">MonadState</span><span> </span><a href="#local-6989586621679047409"><span class="hs-identifier hs-type">s</span></a><span> </span><span class="hs-special">(</span><a href="Control.Monad.Trans.Repeat.html#RepeatT"><span class="hs-identifier hs-type">RepeatT</span></a><span> </span><a href="#local-6989586621679047411"><span class="hs-identifier hs-type">r</span></a><span> </span><a href="#local-6989586621679047410"><span class="hs-identifier hs-type">m</span></a><span class="hs-special">)</span><span> </span><span class="hs-keyword">where</span><span>
+</span><a name="line-106"></a><span>  </span><a name="local-8214565720323794551"><span class="hs-identifier">get</span></a><span> </span><span class="hs-glyph">=</span><span> </span><span class="hs-identifier hs-var">lift</span><span> </span><span class="hs-identifier hs-var">get</span><span>
+</span><a name="line-107"></a><span>  </span><a name="local-8214565720323794550"><span class="hs-identifier">put</span></a><span> </span><span class="hs-glyph">=</span><span> </span><span class="hs-identifier hs-var">lift</span><span> </span><span class="hs-operator hs-var">.</span><span> </span><span class="hs-identifier hs-var">put</span><span>
+</span><a name="line-108"></a><span>  </span><a name="local-8214565720323794549"><span class="hs-identifier">state</span></a><span> </span><span class="hs-glyph">=</span><span> </span><span class="hs-identifier hs-var">lift</span><span> </span><span class="hs-operator hs-var">.</span><span> </span><span class="hs-identifier hs-var">state</span><span>
+</span><a name="line-109"></a><span>
+</span><a name="line-110"></a><span class="hs-identifier">breakM</span><span> </span><span class="hs-glyph">::</span><span> </span><span class="hs-identifier hs-type">Monad</span><span> </span><a href="#local-6989586621679047443"><span class="hs-identifier hs-type">m</span></a><span> </span><span class="hs-glyph">=&gt;</span><span> </span><a href="#local-6989586621679047444"><span class="hs-identifier hs-type">r</span></a><span> </span><span class="hs-glyph">-&gt;</span><span> </span><a href="Control.Monad.Trans.Repeat.html#RepeatT"><span class="hs-identifier hs-type">RepeatT</span></a><span> </span><a href="#local-6989586621679047444"><span class="hs-identifier hs-type">r</span></a><span> </span><a href="#local-6989586621679047443"><span class="hs-identifier hs-type">m</span></a><span> </span><a href="#local-6989586621679047445"><span class="hs-identifier hs-type">a</span></a><span>
+</span><a name="line-111"></a><a name="breakM"><a href="Control.Monad.Trans.Repeat.html#breakM"><span class="hs-identifier">breakM</span></a></a><span> </span><span class="hs-glyph">=</span><span> </span><a href="Control.Monad.Trans.Repeat.html#RepeatT"><span class="hs-identifier hs-var">RepeatT</span></a><span> </span><span class="hs-operator hs-var">.</span><span> </span><span class="hs-identifier hs-var">FreeT</span><span> </span><span class="hs-operator hs-var">.</span><span> </span><span class="hs-identifier hs-var">return</span><span> </span><span class="hs-operator hs-var">.</span><span> </span><span class="hs-identifier hs-var">Free</span><span> </span><span class="hs-operator hs-var">.</span><span> </span><a href="Control.Monad.Trans.Repeat.html#Break"><span class="hs-identifier hs-var">Break</span></a><span>
+</span><a name="line-112"></a><span>
+</span><a name="line-113"></a><span class="hs-identifier">repeatM</span><span> </span><span class="hs-glyph">::</span><span> </span><span class="hs-identifier hs-type">Monad</span><span> </span><a href="#local-6989586621679047441"><span class="hs-identifier hs-type">m</span></a><span> </span><span class="hs-glyph">=&gt;</span><span> </span><a href="Control.Monad.Trans.Repeat.html#RepeatT"><span class="hs-identifier hs-type">RepeatT</span></a><span> </span><a href="#local-6989586621679047442"><span class="hs-identifier hs-type">r</span></a><span> </span><a href="#local-6989586621679047441"><span class="hs-identifier hs-type">m</span></a><span> </span><a href="#local-6989586621679047442"><span class="hs-identifier hs-type">r</span></a><span>
+</span><a name="line-114"></a><a name="repeatM"><a href="Control.Monad.Trans.Repeat.html#repeatM"><span class="hs-identifier">repeatM</span></a></a><span> </span><span class="hs-glyph">=</span><span> </span><a href="Control.Monad.Trans.Repeat.html#RepeatT"><span class="hs-identifier hs-var">RepeatT</span></a><span> </span><span class="hs-operator hs-var">.</span><span> </span><span class="hs-identifier hs-var">FreeT</span><span> </span><span class="hs-operator hs-var">.</span><span> </span><span class="hs-identifier hs-var">return</span><span> </span><span class="hs-operator hs-var">.</span><span> </span><span class="hs-identifier hs-var">Free</span><span> </span><span class="hs-operator hs-var">$</span><span> </span><a href="Control.Monad.Trans.Repeat.html#Repeat"><span class="hs-identifier hs-var">Repeat</span></a><span> </span><span class="hs-identifier hs-var">return</span><span>
+</span><a name="line-115"></a><span>
+</span><a name="line-116"></a><span class="hs-identifier">test</span><span> </span><span class="hs-glyph">::</span><span> </span><span class="hs-identifier hs-type">Int</span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="hs-identifier hs-type">IO</span><span> </span><span class="hs-special">(</span><span class="hs-special">)</span><span>
+</span><a name="line-117"></a><a name="test"><a href="Control.Monad.Trans.Repeat.html#test"><span class="hs-identifier">test</span></a></a><span> </span><a name="local-6989586621679047455"><a href="#local-6989586621679047455"><span class="hs-identifier">n</span></a></a><span> </span><span class="hs-glyph">=</span><span>
+</span><a name="line-118"></a><span>  </span><span class="hs-special">(</span><span class="hs-operator hs-var">&gt;&gt;=</span><span> </span><span class="hs-identifier hs-var">print</span><span class="hs-special">)</span><span> </span><span class="hs-operator hs-var">.</span><span>
+</span><a name="line-119"></a><span>  </span><span class="hs-identifier">runMaybeT</span><span> </span><span class="hs-operator hs-var">.</span><span>
+</span><a name="line-120"></a><span>  </span><span class="hs-identifier hs-var">runExceptT</span><span> </span><span class="hs-operator hs-var">.</span><span> </span><span class="hs-identifier hs-var">mapExceptT</span><span> </span><span class="hs-special">(</span><span class="hs-identifier hs-var">mapMaybeT</span><span> </span><span class="hs-special">(</span><span class="hs-special">`</span><span class="hs-identifier hs-var">evalStateT</span><span class="hs-special">`</span><span> </span><span class="hs-special">(</span><span class="hs-identifier hs-var">False</span><span class="hs-special">,</span><span> </span><span class="hs-number">0</span><span class="hs-special">)</span><span class="hs-special">)</span><span class="hs-special">)</span><span> </span><span class="hs-operator hs-var">.</span><span> </span><a href="Control.Monad.Trans.Repeat.html#execRepeatT"><span class="hs-identifier hs-var">execRepeatT</span></a><span> </span><span class="hs-operator hs-var">$</span><span> </span><span class="hs-keyword">do</span><span>
+</span><a name="line-121"></a><span>    </span><span class="hs-special">(</span><a name="local-6989586621679047456"><a href="#local-6989586621679047456"><span class="hs-identifier">done</span></a></a><span class="hs-special">,</span><span> </span><a name="local-6989586621679047457"><a href="#local-6989586621679047457"><span class="hs-identifier">i</span></a></a><span class="hs-special">)</span><span> </span><span class="hs-glyph">&lt;-</span><span> </span><span class="hs-identifier hs-var">get</span><span>
+</span><a name="line-122"></a><span>    </span><span class="hs-keyword">if</span><span> </span><a href="#local-6989586621679047456"><span class="hs-identifier hs-var">done</span></a><span>
+</span><a name="line-123"></a><span>      </span><span class="hs-keyword">then</span><span> </span><span class="hs-keyword">do</span><span>
+</span><a name="line-124"></a><span>        </span><span class="hs-identifier hs-var">liftIO</span><span> </span><span class="hs-operator hs-var">$</span><span> </span><span class="hs-identifier hs-var">putStrLn</span><span> </span><span class="hs-string">&quot;breaking&quot;</span><span>
+</span><a name="line-125"></a><span>        </span><a href="Control.Monad.Trans.Repeat.html#breakM"><span class="hs-identifier hs-var">breakM</span></a><span> </span><a href="#local-6989586621679047457"><span class="hs-identifier hs-var">i</span></a><span>
+</span><a name="line-126"></a><span>      </span><span class="hs-keyword">else</span><span> </span><span class="hs-keyword">do</span><span>
+</span><a name="line-127"></a><span>        </span><span class="hs-keyword">if</span><span> </span><a href="#local-6989586621679047457"><span class="hs-identifier hs-var">i</span></a><span> </span><span class="hs-operator hs-var">&gt;=</span><span> </span><a href="#local-6989586621679047455"><span class="hs-identifier hs-var">n</span></a><span>
+</span><a name="line-128"></a><span>          </span><span class="hs-keyword">then</span><span> </span><span class="hs-keyword">do</span><span>
+</span><a name="line-129"></a><span>            </span><span class="hs-identifier hs-var">liftIO</span><span> </span><span class="hs-operator hs-var">$</span><span> </span><span class="hs-identifier hs-var">putStrLn</span><span> </span><span class="hs-string">&quot;negating initial state&quot;</span><span>
+</span><a name="line-130"></a><span>            </span><span class="hs-identifier hs-var">modify</span><span> </span><span class="hs-operator hs-var">$</span><span> </span><span class="hs-identifier hs-var">first</span><span> </span><span class="hs-identifier hs-var">not</span><span>
+</span><a name="line-131"></a><span>          </span><span class="hs-keyword">else</span><span> </span><span class="hs-keyword">do</span><span>
+</span><a name="line-132"></a><span>            </span><span class="hs-identifier hs-var">liftIO</span><span> </span><span class="hs-operator hs-var">.</span><span> </span><span class="hs-identifier hs-var">putStrLn</span><span> </span><span class="hs-operator hs-var">$</span><span> </span><span class="hs-string">&quot;incrementing: &quot;</span><span> </span><span class="hs-operator hs-var">++</span><span> </span><span class="hs-identifier hs-var">show</span><span> </span><a href="#local-6989586621679047457"><span class="hs-identifier hs-var">i</span></a><span>
+</span><a name="line-133"></a><span>            </span><span class="hs-identifier hs-var">modify</span><span> </span><span class="hs-operator hs-var">$</span><span> </span><span class="hs-identifier hs-var">fmap</span><span> </span><span class="hs-special">(</span><span class="hs-operator hs-var">+</span><span> </span><span class="hs-number">1</span><span class="hs-special">)</span><span>
+</span><a name="line-134"></a><span>        </span><a href="Control.Monad.Trans.Repeat.html#repeatM"><span class="hs-identifier hs-var">repeatM</span></a><span>
+</span><a name="line-135"></a><span>
+</span><a name="line-136"></a><span>
+</span><a name="line-137"></a><span>
+</span><a name="line-138"></a><span class="hs-comment">-- data RepeaT r m a where</span><span>
+</span><a name="line-139"></a><span class="hs-comment">--   Brk :: r -&gt; RepeaT r m a</span><span>
+</span><a name="line-140"></a><span class="hs-comment">--   RepeaT :: (r -&gt; _ a) -&gt; RepeaT r m a</span><span>
+</span><a name="line-141"></a><span>
+</span><a name="line-142"></a><span>
+</span><a name="line-143"></a><span class="hs-comment">-- Stack of effects that could break, Repeat, Another stack of effects that could break, Repeat ..</span><span>
+</span><a name="line-144"></a><span>
+</span><a name="line-145"></a><span class="hs-comment">-- ExceptT r m (a | (r -&gt; a) -&gt; _ |</span><span>
+</span><a name="line-146"></a><span>
+</span><a name="line-147"></a><span class="hs-comment">-- m (r | a | (r -&gt; RepeatT r m a) -&gt; _</span><span>
+</span><a name="line-148"></a><span>
+</span><a name="line-149"></a><span class="hs-keyword">data</span><span> </span><a name="RepeaTF"><a href="Control.Monad.Trans.Repeat.html#RepeaTF"><span class="hs-identifier">RepeaTF</span></a></a><span> </span><a name="local-6989586621679047388"><a href="#local-6989586621679047388"><span class="hs-identifier">r</span></a></a><span> </span><a name="local-6989586621679047389"><a href="#local-6989586621679047389"><span class="hs-identifier">a</span></a></a><span> </span><span class="hs-keyword">where</span><span>
+</span><a name="line-150"></a><span>  </span><a name="Brk"><a href="Control.Monad.Trans.Repeat.html#Brk"><span class="hs-identifier">Brk</span></a></a><span> </span><span class="hs-glyph">::</span><span> </span><a href="#local-6989586621679047390"><span class="hs-identifier hs-type">r</span></a><span> </span><span class="hs-glyph">-&gt;</span><span> </span><a href="Control.Monad.Trans.Repeat.html#RepeaTF"><span class="hs-identifier hs-type">RepeaTF</span></a><span> </span><a href="#local-6989586621679047390"><span class="hs-identifier hs-type">r</span></a><span> </span><a href="#local-6989586621679047391"><span class="hs-identifier hs-type">a</span></a><span>
+</span><a name="line-151"></a><span>  </span><a name="Rep"><a href="Control.Monad.Trans.Repeat.html#Rep"><span class="hs-identifier">Rep</span></a></a><span> </span><span class="hs-glyph">::</span><span> </span><span class="hs-special">(</span><a href="#local-6989586621679047392"><span class="hs-identifier hs-type">r</span></a><span> </span><span class="hs-glyph">-&gt;</span><span> </span><a href="#local-6989586621679047393"><span class="hs-identifier hs-type">a</span></a><span class="hs-special">)</span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><a href="Control.Monad.Trans.Repeat.html#RepeaTF"><span class="hs-identifier hs-type">RepeaTF</span></a><span> </span><a href="#local-6989586621679047392"><span class="hs-identifier hs-type">r</span></a><span> </span><a href="#local-6989586621679047393"><span class="hs-identifier hs-type">a</span></a><span>
+</span><a name="line-152"></a><span>
+</span><a name="line-153"></a><span class="hs-keyword">instance</span><span> </span><span class="hs-identifier hs-type">Functor</span><span> </span><span class="hs-special">(</span><a href="Control.Monad.Trans.Repeat.html#RepeaTF"><span class="hs-identifier hs-type">RepeaTF</span></a><span> </span><a href="#local-6989586621679047405"><span class="hs-identifier hs-type">r</span></a><span class="hs-special">)</span><span> </span><span class="hs-keyword">where</span><span>
+</span><a name="line-154"></a><span>  </span><a name="local-3458764513820541101"><span class="hs-identifier">fmap</span></a><span> </span><span class="hs-identifier">_</span><span> </span><span class="hs-special">(</span><a href="Control.Monad.Trans.Repeat.html#Brk"><span class="hs-identifier hs-var">Brk</span></a><span> </span><a name="local-6989586621679047406"><a href="#local-6989586621679047406"><span class="hs-identifier">r</span></a></a><span class="hs-special">)</span><span> </span><span class="hs-glyph">=</span><span> </span><a href="Control.Monad.Trans.Repeat.html#Brk"><span class="hs-identifier hs-var">Brk</span></a><span> </span><a href="#local-6989586621679047406"><span class="hs-identifier hs-var">r</span></a><span>
+</span><a name="line-155"></a><span>  </span><span class="hs-identifier">fmap</span><span> </span><a name="local-6989586621679047407"><a href="#local-6989586621679047407"><span class="hs-identifier">f</span></a></a><span> </span><span class="hs-special">(</span><a href="Control.Monad.Trans.Repeat.html#Rep"><span class="hs-identifier hs-var">Rep</span></a><span> </span><a name="local-6989586621679047408"><a href="#local-6989586621679047408"><span class="hs-identifier">g</span></a></a><span class="hs-special">)</span><span> </span><span class="hs-glyph">=</span><span> </span><a href="Control.Monad.Trans.Repeat.html#Rep"><span class="hs-identifier hs-var">Rep</span></a><span> </span><span class="hs-operator hs-var">$</span><span> </span><a href="#local-6989586621679047407"><span class="hs-identifier hs-var">f</span></a><span> </span><span class="hs-operator hs-var">.</span><span> </span><a href="#local-6989586621679047408"><span class="hs-identifier hs-var">g</span></a><span>
+</span><a name="line-156"></a><span>
+</span><a name="line-157"></a><span class="hs-keyword">newtype</span><span> </span><a name="RepeaT"><a href="Control.Monad.Trans.Repeat.html#RepeaT"><span class="hs-identifier">RepeaT</span></a></a><span> </span><a name="local-6989586621679047385"><a href="#local-6989586621679047385"><span class="hs-identifier">r</span></a></a><span> </span><a name="local-6989586621679047386"><a href="#local-6989586621679047386"><span class="hs-identifier">m</span></a></a><span> </span><a name="local-6989586621679047387"><a href="#local-6989586621679047387"><span class="hs-identifier">a</span></a></a><span> </span><span class="hs-glyph">=</span><span> </span><a name="RepeaT"><a href="Control.Monad.Trans.Repeat.html#RepeaT"><span class="hs-identifier">RepeaT</span></a></a><span> </span><span class="hs-special">{</span><span> </span><a name="unRepeaT"><a href="Control.Monad.Trans.Repeat.html#unRepeaT"><span class="hs-identifier">unRepeaT</span></a></a><span> </span><span class="hs-glyph">::</span><span> </span><span class="hs-identifier hs-type">FreeT</span><span> </span><span class="hs-special">(</span><a href="Control.Monad.Trans.Repeat.html#RepeaTF"><span class="hs-identifier hs-type">RepeaTF</span></a><span> </span><a href="#local-6989586621679047385"><span class="hs-identifier hs-type">r</span></a><span class="hs-special">)</span><span> </span><a href="#local-6989586621679047386"><span class="hs-identifier hs-type">m</span></a><span> </span><a href="#local-6989586621679047387"><span class="hs-identifier hs-type">a</span></a><span> </span><span class="hs-special">}</span><span> </span><span class="hs-keyword">deriving</span><span> </span><span class="hs-special">(</span><span class="hs-identifier hs-type">Functor</span><span class="hs-special">)</span><span>
+</span><a name="line-158"></a><span>
+</span><a name="line-159"></a><span class="hs-identifier">eval</span><span> </span><span class="hs-glyph">::</span><span> </span><span class="hs-identifier hs-type">Monad</span><span> </span><a href="#local-6989586621679047438"><span class="hs-identifier hs-type">m</span></a><span> </span><span class="hs-glyph">=&gt;</span><span> </span><a href="Control.Monad.Trans.Repeat.html#RepeaT"><span class="hs-identifier hs-type">RepeaT</span></a><span> </span><a href="#local-6989586621679047439"><span class="hs-identifier hs-type">r</span></a><span> </span><a href="#local-6989586621679047438"><span class="hs-identifier hs-type">m</span></a><span> </span><a href="#local-6989586621679047440"><span class="hs-identifier hs-type">a</span></a><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="hs-identifier hs-type">ExceptT</span><span> </span><span class="hs-special">(</span><a href="Control.Monad.Trans.Repeat.html#RepeaTF"><span class="hs-identifier hs-type">RepeaTF</span></a><span> </span><a href="#local-6989586621679047439"><span class="hs-identifier hs-type">r</span></a><span> </span><a href="#local-6989586621679047440"><span class="hs-identifier hs-type">a</span></a><span class="hs-special">)</span><span> </span><a href="#local-6989586621679047438"><span class="hs-identifier hs-type">m</span></a><span> </span><a href="#local-6989586621679047440"><span class="hs-identifier hs-type">a</span></a><span>
+</span><a name="line-160"></a><a name="eval"><a href="Control.Monad.Trans.Repeat.html#eval"><span class="hs-identifier">eval</span></a></a><span> </span><span class="hs-glyph">=</span><span> </span><span class="hs-identifier hs-var">mapExceptT</span><span> </span><a href="Control.Monad.Trans.HisT.html#evalHisT"><span class="hs-identifier hs-var">evalHisT</span></a><span> </span><span class="hs-operator hs-var">.</span><span> </span><a href="Control.Monad.Trans.Repeat.html#evalFT"><span class="hs-identifier hs-var">evalFT</span></a><span> </span><span class="hs-operator hs-var">.</span><span> </span><span class="hs-identifier hs-var">hoistFreeT</span><span> </span><span class="hs-identifier hs-var">lift</span><span> </span><span class="hs-operator hs-var">.</span><span> </span><span class="hs-identifier">unRepeaT</span><span>
+</span><a name="line-161"></a><span>
+</span><a name="line-162"></a><span class="hs-identifier">evalFT</span><span> </span><span class="hs-glyph">::</span><span> </span><span class="hs-identifier hs-type">Monad</span><span> </span><a href="#local-6989586621679047435"><span class="hs-identifier hs-type">m</span></a><span> </span><span class="hs-glyph">=&gt;</span><span> </span><span class="hs-identifier hs-type">FreeT</span><span> </span><span class="hs-special">(</span><a href="Control.Monad.Trans.Repeat.html#RepeaTF"><span class="hs-identifier hs-type">RepeaTF</span></a><span> </span><a href="#local-6989586621679047436"><span class="hs-identifier hs-type">r</span></a><span class="hs-special">)</span><span> </span><span class="hs-special">(</span><a href="Control.Monad.Trans.HisT.html#HisT"><span class="hs-identifier hs-type">HisT</span></a><span> </span><a href="#local-6989586621679047435"><span class="hs-identifier hs-type">m</span></a><span class="hs-special">)</span><span> </span><a href="#local-6989586621679047437"><span class="hs-identifier hs-type">a</span></a><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="hs-identifier hs-type">ExceptT</span><span> </span><span class="hs-special">(</span><a href="Control.Monad.Trans.Repeat.html#RepeaTF"><span class="hs-identifier hs-type">RepeaTF</span></a><span> </span><a href="#local-6989586621679047436"><span class="hs-identifier hs-type">r</span></a><span> </span><a href="#local-6989586621679047437"><span class="hs-identifier hs-type">a</span></a><span class="hs-special">)</span><span> </span><span class="hs-special">(</span><a href="Control.Monad.Trans.HisT.html#HisT"><span class="hs-identifier hs-type">HisT</span></a><span> </span><a href="#local-6989586621679047435"><span class="hs-identifier hs-type">m</span></a><span class="hs-special">)</span><span> </span><a href="#local-6989586621679047437"><span class="hs-identifier hs-type">a</span></a><span>
+</span><a name="line-163"></a><a name="evalFT"><a href="Control.Monad.Trans.Repeat.html#evalFT"><span class="hs-identifier">evalFT</span></a></a><span> </span><span class="hs-glyph">=</span><span> </span><span class="hs-special">(</span><span class="hs-operator hs-var">&gt;&gt;=</span><span> </span><a href="Control.Monad.Trans.Repeat.html#evalF"><span class="hs-identifier hs-var">evalF</span></a><span class="hs-special">)</span><span> </span><span class="hs-operator hs-var">.</span><span> </span><span class="hs-identifier hs-var">lift</span><span> </span><span class="hs-operator hs-var">.</span><span> </span><span class="hs-identifier">runFreeT</span><span>
+</span><a name="line-164"></a><span>
+</span><a name="line-165"></a><span class="hs-comment">-- | `undefined`</span><span>
+</span><a name="line-166"></a><span class="hs-identifier">evalF</span><span> </span><span class="hs-glyph">::</span><span> </span><span class="hs-identifier hs-type">Monad</span><span> </span><a href="#local-6989586621679047432"><span class="hs-identifier hs-type">m</span></a><span> </span><span class="hs-glyph">=&gt;</span><span> </span><span class="hs-identifier hs-type">FreeF</span><span> </span><span class="hs-special">(</span><a href="Control.Monad.Trans.Repeat.html#RepeaTF"><span class="hs-identifier hs-type">RepeaTF</span></a><span> </span><a href="#local-6989586621679047433"><span class="hs-identifier hs-type">r</span></a><span class="hs-special">)</span><span> </span><a href="#local-6989586621679047434"><span class="hs-identifier hs-type">a</span></a><span> </span><span class="hs-special">(</span><span class="hs-identifier hs-type">FreeT</span><span> </span><span class="hs-special">(</span><a href="Control.Monad.Trans.Repeat.html#RepeaTF"><span class="hs-identifier hs-type">RepeaTF</span></a><span> </span><a href="#local-6989586621679047433"><span class="hs-identifier hs-type">r</span></a><span class="hs-special">)</span><span> </span><span class="hs-special">(</span><a href="Control.Monad.Trans.HisT.html#HisT"><span class="hs-identifier hs-type">HisT</span></a><span> </span><a href="#local-6989586621679047432"><span class="hs-identifier hs-type">m</span></a><span class="hs-special">)</span><span> </span><a href="#local-6989586621679047434"><span class="hs-identifier hs-type">a</span></a><span class="hs-special">)</span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="hs-identifier hs-type">ExceptT</span><span> </span><span class="hs-special">(</span><a href="Control.Monad.Trans.Repeat.html#RepeaTF"><span class="hs-identifier hs-type">RepeaTF</span></a><span> </span><a href="#local-6989586621679047433"><span class="hs-identifier hs-type">r</span></a><span> </span><a href="#local-6989586621679047434"><span class="hs-identifier hs-type">a</span></a><span class="hs-special">)</span><span> </span><span class="hs-special">(</span><a href="Control.Monad.Trans.HisT.html#HisT"><span class="hs-identifier hs-type">HisT</span></a><span> </span><a href="#local-6989586621679047432"><span class="hs-identifier hs-type">m</span></a><span class="hs-special">)</span><span> </span><a href="#local-6989586621679047434"><span class="hs-identifier hs-type">a</span></a><span>
+</span><a name="line-167"></a><a name="evalF"><a href="Control.Monad.Trans.Repeat.html#evalF"><span class="hs-identifier">evalF</span></a></a><span> </span><span class="hs-special">(</span><span class="hs-identifier hs-var">Pure</span><span> </span><a name="local-6989586621679047458"><a href="#local-6989586621679047458"><span class="hs-identifier">xs</span></a></a><span class="hs-special">)</span><span> </span><span class="hs-glyph">=</span><span> </span><span class="hs-identifier hs-var">return</span><span> </span><a href="#local-6989586621679047458"><span class="hs-identifier hs-var">xs</span></a><span>
+</span><a name="line-168"></a><span class="hs-identifier">evalF</span><span> </span><span class="hs-special">(</span><span class="hs-identifier hs-var">Free</span><span> </span><a name="local-6989586621679047459"><a href="#local-6989586621679047459"><span class="hs-identifier">xs</span></a></a><span class="hs-special">)</span><span> </span><span class="hs-glyph">=</span><span> </span><span class="hs-identifier hs-var">undefined</span><span> </span><a href="#local-6989586621679047459"><span class="hs-identifier hs-var">xs</span></a><span>
+</span><a name="line-169"></a><span>
+</span><a name="line-170"></a><span class="hs-comment">-- | `undefined`</span><span>
+</span><a name="line-171"></a><span class="hs-identifier">evalTF</span><span> </span><span class="hs-glyph">::</span><span> </span><span class="hs-identifier hs-type">Monad</span><span> </span><a href="#local-6989586621679047429"><span class="hs-identifier hs-type">m</span></a><span> </span><span class="hs-glyph">=&gt;</span><span> </span><a href="Control.Monad.Trans.Repeat.html#RepeaTF"><span class="hs-identifier hs-type">RepeaTF</span></a><span> </span><a href="#local-6989586621679047430"><span class="hs-identifier hs-type">r</span></a><span> </span><span class="hs-special">(</span><span class="hs-identifier hs-type">FreeT</span><span> </span><span class="hs-special">(</span><a href="Control.Monad.Trans.Repeat.html#RepeaTF"><span class="hs-identifier hs-type">RepeaTF</span></a><span> </span><a href="#local-6989586621679047430"><span class="hs-identifier hs-type">r</span></a><span class="hs-special">)</span><span> </span><span class="hs-special">(</span><a href="Control.Monad.Trans.HisT.html#HisT"><span class="hs-identifier hs-type">HisT</span></a><span> </span><a href="#local-6989586621679047429"><span class="hs-identifier hs-type">m</span></a><span class="hs-special">)</span><span> </span><a href="#local-6989586621679047431"><span class="hs-identifier hs-type">a</span></a><span class="hs-special">)</span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><a href="Control.Monad.Trans.HisT.html#HisT"><span class="hs-identifier hs-type">HisT</span></a><span> </span><span class="hs-special">(</span><span class="hs-identifier hs-type">ExceptT</span><span> </span><span class="hs-special">(</span><a href="Control.Monad.Trans.Repeat.html#RepeaTF"><span class="hs-identifier hs-type">RepeaTF</span></a><span> </span><a href="#local-6989586621679047430"><span class="hs-identifier hs-type">r</span></a><span> </span><a href="#local-6989586621679047431"><span class="hs-identifier hs-type">a</span></a><span class="hs-special">)</span><span> </span><a href="#local-6989586621679047429"><span class="hs-identifier hs-type">m</span></a><span class="hs-special">)</span><span> </span><a href="#local-6989586621679047431"><span class="hs-identifier hs-type">a</span></a><span>
+</span><a name="line-172"></a><a name="evalTF"><a href="Control.Monad.Trans.Repeat.html#evalTF"><span class="hs-identifier">evalTF</span></a></a><span> </span><span class="hs-special">(</span><a href="Control.Monad.Trans.Repeat.html#Brk"><span class="hs-identifier hs-var">Brk</span></a><span> </span><a name="local-6989586621679047474"><a href="#local-6989586621679047474"><span class="hs-identifier">r</span></a></a><span class="hs-special">)</span><span> </span><span class="hs-glyph">=</span><span> </span><span class="hs-identifier hs-var">undefined</span><span> </span><a href="#local-6989586621679047474"><span class="hs-identifier hs-var">r</span></a><span>
+</span><a name="line-173"></a><span class="hs-identifier">evalTF</span><span> </span><span class="hs-special">(</span><a href="Control.Monad.Trans.Repeat.html#Rep"><span class="hs-identifier hs-var">Rep</span></a><span> </span><a name="local-6989586621679047475"><a href="#local-6989586621679047475"><span class="hs-identifier">f</span></a></a><span class="hs-special">)</span><span> </span><span class="hs-glyph">=</span><span> </span><span class="hs-identifier hs-var">undefined</span><span> </span><a href="#local-6989586621679047475"><span class="hs-identifier hs-var">f</span></a><span>
+</span><a name="line-174"></a><span>
+</span><a name="line-175"></a><span class="hs-comment">-- | Repeat the `Monad`ic action until an exception is thrown</span><span>
+</span><a name="line-176"></a><span class="hs-identifier">fixLeft</span><span> </span><span class="hs-glyph">::</span><span> </span><span class="hs-identifier hs-type">Monad</span><span> </span><a href="#local-6989586621679047427"><span class="hs-identifier hs-type">m</span></a><span> </span><span class="hs-glyph">=&gt;</span><span> </span><span class="hs-identifier hs-type">ExceptT</span><span> </span><a href="#local-6989586621679047428"><span class="hs-identifier hs-type">a</span></a><span> </span><a href="#local-6989586621679047427"><span class="hs-identifier hs-type">m</span></a><span> </span><span class="hs-special">(</span><span class="hs-special">)</span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><a href="#local-6989586621679047427"><span class="hs-identifier hs-type">m</span></a><span> </span><a href="#local-6989586621679047428"><span class="hs-identifier hs-type">a</span></a><span>
+</span><a name="line-177"></a><a name="fixLeft"><a href="Control.Monad.Trans.Repeat.html#fixLeft"><span class="hs-identifier">fixLeft</span></a></a><span> </span><span class="hs-glyph">=</span><span> </span><span class="hs-identifier hs-var">fix</span><span> </span><span class="hs-operator hs-var">$</span><span> </span><span class="hs-identifier hs-var">liftM2</span><span> </span><span class="hs-special">(</span><span class="hs-operator hs-var">&gt;&gt;=</span><span class="hs-special">)</span><span> </span><span class="hs-identifier hs-var">runExceptT</span><span> </span><span class="hs-operator hs-var">.</span><span> </span><span class="hs-special">(</span><span class="hs-identifier hs-var">either</span><span> </span><span class="hs-identifier hs-var">return</span><span> </span><span class="hs-operator hs-var">.</span><span> </span><span class="hs-identifier hs-var">const</span><span> </span><span class="hs-operator hs-var">&lt;$&gt;</span><span class="hs-special">)</span><span>
+</span><a name="line-178"></a><span>
+</span><a name="line-179"></a><span class="hs-comment">-- xs = runExceptT xs &gt;&gt;= either return (const $ fixLeft xs)</span><span>
+</span><a name="line-180"></a><span>
+</span><a name="line-181"></a><span class="hs-comment">-- \f -&gt; liftM2 (&gt;&gt;=) runExceptT (either return . const . f)</span><span>
+</span><a name="line-182"></a><span>
+</span><a name="line-183"></a><span class="hs-comment">-- ExceptT (RepeaTF r a) m ()</span><span>
+</span><a name="line-184"></a><span>
+</span><a name="line-185"></a><span>
+</span><a name="line-186"></a><span class="hs-comment">-- Bind and carry stack</span><span>
+</span><a name="line-187"></a><span>
+</span><a name="line-188"></a><span class="hs-comment">-- If Brk:</span><span>
+</span><a name="line-189"></a><span class="hs-comment">--   Drop stack</span><span>
+</span><a name="line-190"></a><span class="hs-comment">-- If Rep:</span><span>
+</span><a name="line-191"></a><span class="hs-comment">--   Fix stack to get result</span><span>
+</span><a name="line-192"></a><span>
+</span><a name="line-193"></a><span class="hs-comment">-- FreeT (RepeaTF r) m a -&gt; FreeT (RepeaTF r) (HisT m) a</span><span>
+</span><a name="line-194"></a><span>
+</span><a name="line-195"></a><span>
+</span><a name="line-196"></a><span>
+</span><a name="line-197"></a><span class="hs-comment">-- m a -&gt; (a -&gt; m b) -&gt; m b</span><span>
+</span><a name="line-198"></a><span class="hs-comment">-- (m (), m a) -&gt; (a -&gt; m b) -&gt; (m (), m b)</span><span>
+</span><a name="line-199"></a><span>
+</span><a name="line-200"></a><span>
+</span><a name="line-201"></a><span>    </span><span class="hs-comment">-- xs &gt;&gt;= _ . f</span><span>
+</span><a name="line-202"></a><span>
+</span><a name="line-203"></a><span>  </span><span class="hs-comment">{-
+newtype HisT m a = HisT
+  { runHisT :: (m (), m a)
+  }
+
+evalHisT :: HisT m a -&gt; m a
+evalHisT = snd . runHisT
+
+instance Functor m =&gt; Functor (HisT m) where
+  fmap f = HisT . fmap (fmap f) . runHisT
+
+instance Applicative m =&gt; Applicative (HisT m) where
+  pure x = HisT (pure (), pure x)
+  ~(HisT (fh, fs)) &lt;*&gt; ~(HisT (xh, xs)) = HisT (fh *&gt; xh, fs &lt;*&gt; xs)
+
+instance Monad m =&gt; Monad (HisT m) where
+  ~(HisT (xh, xs)) &gt;&gt;= f =
+    HisT (xs &gt;&gt;= fst . runHisT . f, xs &gt;&gt;= snd . runHisT . f)
+
+instance MonadTrans HisT where
+  lift xs = HisT (void xs, xs)
+-}</span><span>
+</span><a name="line-225"></a><span>
+</span><a name="line-226"></a><span>
+</span><a name="line-227"></a><span class="hs-comment">-- -- | Indexed monad version of `RepeatT`</span><span>
+</span><a name="line-228"></a><span class="hs-comment">-- data RepeaT r m i j a where</span><span>
+</span><a name="line-229"></a><span class="hs-comment">--   Ret :: a -&gt; RepeaT r m i i a</span><span>
+</span><a name="line-230"></a><span class="hs-comment">--   Brk :: r -&gt; RepeaT r m i r a</span><span>
+</span><a name="line-231"></a><span class="hs-comment">--   Lift :: m (RepeaT r m i j a) -&gt; RepeaT r m i j a</span><span>
+</span><a name="line-232"></a><span class="hs-comment">--   RepeaT :: (r -&gt; a) -&gt; RepeaT r m r () a</span><span>
+</span><a name="line-233"></a><span>
+</span><a name="line-234"></a><span class="hs-comment">-- runRepeaT :: Monad m =&gt; RepeaT r m () () a -&gt; MaybeT m a</span><span>
+</span><a name="line-235"></a><span class="hs-comment">-- runRepeaT (Ret x) = return x</span><span>
+</span><a name="line-236"></a><span class="hs-comment">-- runRepeaT (Brk _) = empty -- =&gt; r ~ ()</span><span>
+</span><a name="line-237"></a><span class="hs-comment">-- runRepeaT (Lift xs) = lift xs &gt;&gt;= runRepeaT</span><span>
+</span><a name="line-238"></a><span class="hs-comment">-- runRepeaT (RepeaT f) = return $ f ()</span><span>
+</span><a name="line-239"></a><span>
+</span><a name="line-240"></a><span class="hs-comment">-- instance Functor m =&gt; IxFunctor (RepeaT r m) where</span><span>
+</span><a name="line-241"></a><span class="hs-comment">--   imap f (Ret x) = Ret $ f x</span><span>
+</span><a name="line-242"></a><span class="hs-comment">--   imap _ (Brk r) = Brk r</span><span>
+</span><a name="line-243"></a><span class="hs-comment">--   imap f (Lift xs) = Lift $ imap f &lt;$&gt; xs</span><span>
+</span><a name="line-244"></a><span class="hs-comment">--   imap f (RepeaT g) = RepeaT $ f . g</span><span>
+</span><a name="line-245"></a><span>
+</span><a name="line-246"></a><span class="hs-comment">-- instance Functor m =&gt; IxPointed (RepeaT r m) where</span><span>
+</span><a name="line-247"></a><span class="hs-comment">--   ireturn = Ret</span><span>
+</span><a name="line-248"></a><span>
+</span><a name="line-249"></a><span class="hs-comment">-- instance Applicative m =&gt; IxApplicative (RepeaT r m) where</span><span>
+</span><a name="line-250"></a><span class="hs-comment">--   iap (Ret f) xs = imap f xs</span><span>
+</span><a name="line-251"></a><span class="hs-comment">--   iap fs (Ret x) = imap ($ x) fs</span><span>
+</span><a name="line-252"></a><span class="hs-comment">--   iap _ (Brk r)  = Brk r</span><span>
+</span><a name="line-253"></a><span class="hs-comment">--   iap (Brk r) (Lift xs)  = Lift $ iap (Brk r) &lt;$&gt; xs</span><span>
+</span><a name="line-254"></a><span class="hs-comment">--   iap (Brk r) (RepeaT xs)  = (undefined :: r -&gt; (r -&gt; a) -&gt; RepeaT r m i () b) r xs</span><span>
+</span><a name="line-255"></a><span class="hs-comment">--   iap (Lift fs) (Lift xs) = Lift $ liftA2 iap fs xs</span><span>
+</span><a name="line-256"></a><span>
+</span><a name="line-257"></a><span>
+</span><a name="line-258"></a><span>
+</span><a name="line-259"></a><span>
+</span><a name="line-260"></a><span class="hs-comment">-- data RepeaT r m a where</span><span>
+</span><a name="line-261"></a><span class="hs-comment">--   Ret :: a -&gt; RepeaT r m a</span><span>
+</span><a name="line-262"></a><span class="hs-comment">--   Lift :: m (RepeaT r m a) -&gt; RepeaT r m a</span><span>
+</span><a name="line-263"></a><span class="hs-comment">--   RepeaT :: ExceptT r m x -&gt; (r -&gt; RepeaT r m a) -&gt; RepeaT r m a</span><span>
+</span><a name="line-264"></a><span>
+</span><a name="line-265"></a><span class="hs-comment">-- -- wrapRepeaT :: Monad m =&gt; m (RepeaT r m a) -&gt; RepeaT r m a</span><span>
+</span><a name="line-266"></a><span class="hs-comment">-- -- wrapRepeaT xs = RepeaT (_ xs) (_ xs)</span><span>
+</span><a name="line-267"></a><span>
+</span><a name="line-268"></a><span class="hs-comment">-- liftRepeaT :: Monad m =&gt; m a -&gt; RepeaT a m a</span><span>
+</span><a name="line-269"></a><span class="hs-comment">-- liftRepeaT xs = RepeaT (ExceptT $ Left &lt;$&gt; xs) Ret</span><span>
+</span><a name="line-270"></a><span>
+</span><a name="line-271"></a><span class="hs-comment">-- instance Monad m =&gt; Functor (RepeaT r m) where</span><span>
+</span><a name="line-272"></a><span class="hs-comment">--   fmap f (Ret x) = Ret $ f x</span><span>
+</span><a name="line-273"></a><span class="hs-comment">--   fmap f (Lift xs) = Lift $ fmap f &lt;$&gt; xs</span><span>
+</span><a name="line-274"></a><span class="hs-comment">--   fmap f (RepeaT xs g) = RepeaT xs $ fmap f . g</span><span>
+</span><a name="line-275"></a><span>
+</span><a name="line-276"></a><span class="hs-comment">-- instance Monad m =&gt; Applicative (RepeaT r m) where</span><span>
+</span><a name="line-277"></a><span class="hs-comment">--   pure = Ret</span><span>
+</span><a name="line-278"></a><span>
+</span><a name="line-279"></a><span class="hs-comment">--   Ret f &lt;*&gt; xs = f &lt;$&gt; xs</span><span>
+</span><a name="line-280"></a><span class="hs-comment">--   f &lt;*&gt; Ret x = ($ x) &lt;$&gt; f</span><span>
+</span><a name="line-281"></a><span class="hs-comment">--   Lift fs &lt;*&gt; xs = Lift $ (&lt;*&gt; xs) &lt;$&gt; fs</span><span>
+</span><a name="line-282"></a><span class="hs-comment">--   fs &lt;*&gt; Lift xs = Lift $ (fs &lt;*&gt;) &lt;$&gt; xs</span><span>
+</span><a name="line-283"></a><span class="hs-comment">--   RepeaT fx fs &lt;*&gt; RepeaT xx xs = Lift $ (fromLeftM $ fx &gt;&gt; xx) &gt;&gt;= return . liftA2 (&lt;*&gt;) fs xs</span><span>
+</span><a name="line-284"></a><span>
+</span><a name="line-285"></a><span>
+</span><a name="line-286"></a><span class="hs-comment">-- fromLeftM :: Monad m =&gt; ExceptT a m x -&gt; m a</span><span>
+</span><a name="line-287"></a><span class="hs-comment">-- fromLeftM ~(ExceptT xs) = loop</span><span>
+</span><a name="line-288"></a><span class="hs-comment">--   where</span><span>
+</span><a name="line-289"></a><span class="hs-comment">--     loop = xs &gt;&gt;= either return (const loop)</span><span>
+</span><a name="line-290"></a><span>
+</span><a name="line-291"></a><span>
+</span><a name="line-292"></a><span>
+</span><a name="line-293"></a><span class="hs-comment">-- Break short-circuits to RepeaT</span><span>
+</span><a name="line-294"></a><span>
+</span><a name="line-295"></a><span class="hs-comment">-- Break | RepeaT | Middle</span><span>
+</span><a name="line-296"></a><span>
+</span><a name="line-297"></a><span class="hs-comment">-- Middle :: ExceptT r m a</span><span>
+</span><a name="line-298"></a><span class="hs-comment">-- RepeaT :: (r -&gt; a) -&gt; RepeaT r m a</span><span>
+</span><a name="line-299"></a><span>
+</span><a name="line-300"></a><span>
+</span><a name="line-301"></a><span>
+</span><a name="line-302"></a><span>
+</span><a name="line-303"></a><span>
+</span><a name="line-304"></a><span>  </span><span class="hs-comment">-- Lift fs &lt;*&gt; Lift xs = Lift $ liftA2 (&lt;*&gt;) fs xs</span><span>
+</span><a name="line-305"></a><span>  </span><span class="hs-comment">-- RepeaT fs &lt;*&gt; RepeaT xs = RepeaT $ liftA2 (&lt;*&gt;) fs xs</span><span>
+</span><a name="line-306"></a><span>  </span><span class="hs-comment">-- (Lift (ExceptT fs)) &lt;*&gt; (RepeaT xs) = Lift . lift $ fs &gt;&gt;= either (_ . xs) (return . RepeaT . _ xs)</span><span>
+</span><a name="line-307"></a><span>  </span><span class="hs-comment">-- (RepeaT fs) &lt;*&gt; (Lift xs) = _ fs xs</span><span>
+</span><a name="line-308"></a><span>
+</span><a name="line-309"></a><span>
+</span><a name="line-310"></a><span class="hs-comment">-- data RepeaT m i j a where</span><span>
+</span><a name="line-311"></a><span class="hs-comment">--   Ret :: a -&gt; RepeaT m i i a</span><span>
+</span><a name="line-312"></a><span class="hs-comment">--   Break :: i -&gt; RepeaT m i r a</span><span>
+</span><a name="line-313"></a><span class="hs-comment">--   RepeaT :: (i -&gt; a) -&gt; RepeaT m i i a</span><span>
+</span><a name="line-314"></a><span>
+</span><a name="line-315"></a><span>
+</span><a name="line-316"></a><span>
+</span><a name="line-317"></a><span class="hs-comment">-- (RepeatT r m a) is the free monad with the following additions:</span><span>
+</span><a name="line-318"></a><span class="hs-comment">-- - Break throws a result of type r</span><span>
+</span><a name="line-319"></a><span class="hs-comment">-- - Repeat repeats all previous after break if exists or returns on break if last is break</span><span>
+</span><a name="line-320"></a><span class="hs-comment">-- - Any other is a monadic computation</span><span>
+</span><a name="line-321"></a><span>
+</span><a name="line-322"></a><span>
+</span><a name="line-323"></a><span>
+</span><a name="line-324"></a><span>
+</span><a name="line-325"></a><span class="hs-comment">-- Hmmmmm</span><span>
+</span><a name="line-326"></a><span>
+</span><a name="line-327"></a><span>
+</span><a name="line-328"></a><span class="hs-comment">-- Break b &gt;&gt;= \_ -&gt; Return = Break b</span><span>
+</span><a name="line-329"></a><span class="hs-comment">-- Return &gt;&gt;= \_ -&gt; Break b = Break b</span><span>
+</span><a name="line-330"></a><span class="hs-comment">-- Return &gt;&gt;= \_ -&gt; Repeat r = Repeat r</span><span>
+</span><a name="line-331"></a><span class="hs-comment">-- Break b &gt;&gt;= \_ -&gt; Repeat r = Return $ r b</span><span>
+</span><a name="line-332"></a><span class="hs-comment">-- Repeat x &gt;&gt;= f = Repeat $ (&gt;&gt;= f) . x</span><span>
+</span><a name="line-333"></a><span>
+</span><a name="line-334"></a><span>
+</span><a name="line-335"></a><span class="hs-comment">{-
+-- | Here, `Nothing` stands for repeating
+newtype RepeatT r m a = MaybeT (ExceptT r m) a
+
+repeat :: RepeatT r m r
+repeat = RepeatT Nothing
+
+-- | Here, `Nothing` stands for a loop failure, i.e. the input was just `repeat`
+runRepeatT :: RepeatT r m a -&gt; MaybeT (ExceptT r m) a
+
+- Should we allow the exceptions in the result?
+  * Ideally, we'd have something like &quot;exceptions can only be thrown to an instance of `repeat`&quot;
+- (xs *&gt; repeat) should be: fromLeft (forever xs)
+
+
+data RepeatT s r m a where
+  Repeat :: RepeatT ThrowsExceptions r m a -&gt; RepeatT NoExceptions r m r
+  ThrowException :: r -&gt; RepeatT ThrowsExceptions r m a
+  LiftRepeat :: m a -&gt; RepeatT NoExceptions r m a
+  LiftRepeat :: m a -&gt; RepeatT _ r m a ??
+
+It's not a Functor:
+vvvvvvvvvvvvvvvvvvvvvvvv
+
+data RepeatT r m a where
+  Repeat :: RepeatT r m r
+  ToRepeat :: ExceptT r m a -&gt; RepeatT r m a
+
+instance (Eq r, Eq1 m) =&gt; Eq1 (RepeatT r m) where
+  liftEq _ Repeat Repeat = True
+  liftEq _ Repeat _ = False
+  liftEq _ _ Repeat = False
+  liftEq eq (ToRepeat xs) (ToRepeat ys) = liftEq eq xs ys
+
+instance (Ord r, Ord1 m) =&gt; Ord1 (RepeatT r m) where
+  liftCompare _ Repeat Repeat = EQ
+  liftCompare _ Repeat _ = LT
+  liftCompare _ _ Repeat = GT
+  liftCompare cmp (ToRepeat xs) (ToRepeat ys) = liftCompare cmp xs ys
+
+instance (Show r, Show1 m) =&gt; Show1 (RepeatT r m) where
+  liftShowsPrec _ _ _ Repeat = showString &quot;Repeat&quot;
+  liftShowsPrec sp sl n (ToRepeat xs) = liftShowsPrec sp sl n xs
+
+instance (Eq r, Eq1 m, Eq a) =&gt; Eq (RepeatT r m a) where
+  (==) = eq1
+
+instance (Ord r, Ord1 m, Ord a) =&gt; Ord (RepeatT r m a) where
+  compare = compare1
+
+instance (Show r, Show1 m, Show a) =&gt; Show (RepeatT r m a) where
+  showsPrec = showsPrec1
+
+
+instance (Read r, Read1 m, Read a, ReadRepeat r a (r == a)) =&gt; Read (RepeatT r m a) where
+  readPrec = readP_to_Prec (const readRepeat) &lt;|&gt; (ToRepeat &lt;$&gt; readPrec)
+
+class ((r == a) ~ b) =&gt; ReadRepeat (r :: *) (a :: *) (b :: Bool) where
+  readRepeat :: RP.ReadP (RepeatT r m a)
+
+instance ((r == r) ~ 'True) =&gt; ReadRepeat r r 'True where
+  readRepeat = RP.string &quot;Repeat&quot; &gt;&gt; return Repeat
+
+instance ((r == a) ~ 'False) =&gt; ReadRepeat r a 'False where
+  readRepeat = fail &quot;r /= a&quot;
+
+
+instance Functor m =&gt; Functor (RepeatT r m) where
+  fmap _ Repeat = _
+  fmap f (ToRepeat xs) = ToRepeat $ f &lt;$&gt; xs
+
+repeat :: RepeatT r m r
+repeat = Repeat
+
+toRepeat :: ExceptT r m a -&gt; RepeatT r m a
+toRepeat = ToRepeat
+-}</span><span>
+</span><a name="line-412"></a></pre></body></html>
